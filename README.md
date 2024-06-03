@@ -208,6 +208,9 @@ return new StepBuilder("step", jobRepository)
 | 1500       | 1m29s433ms     |
 | 2000       | 1m52s78ms      |
 
+![Screenshot 2024-06-04 at 12 19 20 AM](https://github.com/Dittttto/Select-Seat-Project/assets/82052272/c2fcf1ee-982e-462a-af4d-40f78b275968)
+![Screenshot 2024-06-04 at 12 19 32 AM](https://github.com/Dittttto/Select-Seat-Project/assets/82052272/46c94706-069c-4606-913e-a693886e56f7)
+
 측정된 결과를 기반으로 `chunk` 사이즈가 500개인 부분부터 임계점에 도달했다고 판단했고, 500개와 1000개 사이인 **750개**의 `chunk` 사이즈로 최종 결정하였다. 하지만 현재의 750개가 언제나 정답일 수는 없다. 변화하는 서버의 스팩과 지속적인 모니터링으로 튜닝을 수행해야한다.
 </details>
 
@@ -278,6 +281,8 @@ public TicketBatchEntity read() throws Exception {
 
 스프링 배치가 제공하는 대부분의 `ItemReader`는 상태를 유지하므로 스테이트풀하다. 이는 `StepExecutionContext`에 상태를 저장하고 관리하기 때문이다. 스프링 배치는 `ExecutionContext`를 잡과 스텝을 구분해서 관리하는데, 이때 스텝의 ExectionContext 내용을 잡으로 승격시키면 각 스텝에서 동일한 상태를 공유할 수 있게 된다. 이를 위해서 스프링 배치는 `ExecutionContextPromotionListener` 을 제공한다. `ExecutionContextPromotionListener` 은 스텝이 종료되면 `StepExectuion`에 저장된 상태를 `JobExecution` 참조할 수 있도록 자동으로 승격해준다. 내부의 코드를 살펴보면 다음과 같이 네모 박스 부분에서 해당 동작에 대한 구현 부분을 확인할 수 있다.
 
+![Screenshot 2024-06-04 at 12 19 00 AM](https://github.com/Dittttto/Select-Seat-Project/assets/82052272/a2e9d653-51f8-4c09-b1a9-4aeb4b253285)
+
 그리고 ExecutionContextPromotionListener 는 StepExecutionListener 의 구현체이기 때문에 간단하게 listener 로 등록해서 사용이 가능하다.
 
 ```java
@@ -322,6 +327,9 @@ public ExecutionContextPromotionListener concertDatePromotionListener() {
 | 고민해결
 
 서전 알림에 사용되는 데이터는 90% 이상이 조회성 데이터이다. 또한, 기획에 따라서 필요한 데이터의 형태가 지속적으로 변경될 수 있다고 판단했다. 이를 위해서 대용량의 데이터를 빠르게 조회할 수 있고, 정해진 스키마가 없이 데이터를 적재할 수 있는 `NoSQL` 을 도입하기로 결정하였고, 빠른 조회를 바탕으로 공연 사전 알림 서비스를 구현할 수 있었다.
+
+![Screenshot 2024-06-04 at 12 18 05 AM](https://github.com/Dittttto/Select-Seat-Project/assets/82052272/3d10f4f1-736c-4fd5-a123-064e79b75ae2)
+
 </details>
 
 
@@ -335,6 +343,8 @@ public ExecutionContextPromotionListener concertDatePromotionListener() {
 | 고민해결
 
 대량의 트래픽을 보다 빠르고 안정적으로 처리할 수 있는 서버가 필요하였고, Non-Blocking Netty 기반의 Webflux를 선택하게 되었다. 다음은 Netty 서버와 Webflux가 요청을 받았을때 수행되는 흐름을 도식화 한 것이다.
+
+![Screenshot 2024-06-04 at 12 17 15 AM](https://github.com/Dittttto/Select-Seat-Project/assets/82052272/9f32e880-c76f-4f4e-9cc7-65e2d6841551)
 
 요청을 받으면 이벤트 루프에서 요청을 Channel pipleline의 Channel handler에서 위임하고, 이때 요청에 대한 콜백을 등록한다. handler에서 요청을 처리하고 응답에 대한 이벤트를 발행하면 이벤트 루프에서 이전에 등록된 콜백을 실행하여 응답하게 된다. 이러한 방식은 요청당 스레드를 할당하는 것이 아니라 하나의 스레드가 쉬지않고 더 많은 요청을 처리할 수 있다는 점이 webflux 빠른이유의 기반이된다.
 
@@ -366,6 +376,7 @@ public ExecutionContextPromotionListener concertDatePromotionListener() {
 
 이러한 불편함을 개선하고자 처음 고려한 것은 도메인을 기준으로 모듈을 분리하는 것이었다. 하지만 도메인을 기준으로 모듈을 분리시 모듈내부의 복잡도가 증가하게 되는 문제가 있었고 MSA 도입이 더 적절한 선택이라고 판단하였다. 하지만 마감기한과 러닝 커브를 고려하여 레이어를 기준으로 모듈을 분리하고, 필요한 의존성간의 협력관계를 구성하기 위해서 노력했다.
 
+![Screenshot 2024-06-04 at 12 16 42 AM](https://github.com/Dittttto/Select-Seat-Project/assets/82052272/a74da958-559a-4abc-91e2-49161bbf8167)
 
 </details>
 
