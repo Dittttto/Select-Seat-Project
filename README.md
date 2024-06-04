@@ -6,6 +6,7 @@
   - [Table of Contents](#table-of-contents)
   - [Introduction](#introduction)
   - [Demonstraion](#demonstraion)
+    - [시연영상](#시연영상)
   - [Development](#development)
     - [Architecture](#architecture)
     - [Prerequisites](#prerequisites)
@@ -15,6 +16,7 @@
       - [Monitoring](#monitoring)
       - [Frontend](#frontend)
       - [Load Test](#load-test)
+  - [ERD](#erd)
   - [Concern and solution process](#concern-and-solution-process)
   - [About](#about)
 
@@ -347,7 +349,7 @@ public TicketBatchEntity read() throws Exception {
 <summary><h3 style="display: inline-block;"> [Batch] 튜닝을 통한 성능 개선</h3></summary>
 | 고민
 
-스프링 배치에서는 대용량의 데이터를 처리하고, 이러한 처리에 대해서 `Multi-threaded Step`, `Parallel Steps`, `Partitioning`, `Remote Chunking` 의 튜닝 방법을 제공한다. 이선좌의 좌석 생성의 경우, R, S, A 라는 고정된 좌석을 생성하고, 이는 독립된 `step` 으로 실행될 수 있는 특정이 있다. 그렇기 때문에 `single thread`에서 수행하는 것 보다 3개의 워커를 두고 잡을 실행할 수 있다면 리소스 비용을 아낄 수 있다고 판단하였다. 
+스프링 배치에서는 대용량의 데이터를 처리하고, 이러한 처리에 대해서 `Multi-threaded Step`, `Parallel Steps`, `Partitioning`, `Remote Chunking` 의 튜닝 방법을 제공한다. 이선좌의 좌석 생성의 경우, R, S, A 라는 고정된 좌석을 생성하고, 이는 독립된 `step` 으로 실행될 수 있는 특정이 있다. 그렇기 때문에 `single thread`에서 수행하는 것 보다 3개의 워커를 두고 잡을 실행할 수 있다면 리소스 비용을 아낄 수 있다고 판단하였다.
 
 | 실험
 
@@ -436,21 +438,21 @@ public ExecutionContextPromotionListener concertDatePromotionListener() {
 </details>
 
 <details>
-<summary><h3>[Batch] 좌석 키 생성과 이선좌 기능</h3></summary>
+<summary><h3 style="display: inline-block;">[Batch] 좌석 키 생성과 이선좌 기능</h3></summary>
 
 | 고민
 
 티켓팅은 지속적인 새로고침을 통해서 좌석의 상태를 요청하게 되는데, 좌석에 대한 키를 DB에 생성해두고 조회를 하면 DB I/O가 증가하게 되어 영속성 계층에 부하를 발생시키게 된다. 그리고 좌석의 선점에 대한 정보도 함께 조회되어야 한다.
 
-| 해결 
+| 해결
 
 보다 빠른 좌석의 상태 조회를 위해서 미리 콘서트 좌석에 대한 키를 해시 자료구조에 담어 레디스에 생성해두었다. 키를 생성하는 작업은 스프링 배치 잡으로 구현하였고 콘서트 하루전에 미리 키를 생성하고, 콘서트가 끝나는 시점에 좌석 키를 만료할 수 있도록 구현하였다. 해시 자료구조로 키를 생성했기 때문에 O(1) 의 시간에 조회가 가능하다. 그리고 좌석이 선점되었다면 키에 대한 불린 값을 통해서 이선좌 기능이 동작할 수 있도록 구현하였다.
 
-<div align="center">	
+<div align="center">
 <img width="613" alt="Screenshot 2024-06-04 at 12 28 04 PM" src="https://github.com/Dittttto/Select-Seat-Project/assets/82052272/a052ef0e-91a3-492e-9bb2-5fdf5b3da88d">
 </div>
 
-<div align="center">	
+<div align="center">
 <img width="568" alt="Screenshot 2024-06-04 at 12 40 31 PM" src="https://github.com/Dittttto/Select-Seat-Project/assets/82052272/4009cb95-b3bd-4254-a689-e8fa95999b78">
 </div>
 
