@@ -101,6 +101,71 @@ https://github.com/Dittttto/Select-Seat-Project/assets/82052272/48bf6932-a6c1-46
 ## Concern and solution process
 
 <details>
+<summary><h3 style="display: inline-block;"> [Batch] 배치 잡 알림을 통한 모니터링</h3></summary>
+
+| 고민
+
+스프링 배치는 대용량의 데이터를 처리하는 작업에 특화되어 있다. 이때 대용량의 데이터를 처리하는 만큼 배치 잡의 수행에 데이터에 비례하게 수행시간이 소요되게 된다. 배치 잡이 성공적으로 끝나면 좋겠지만, 예기치 못한 상황에서 실패한다면 개발자가 이를 모니터링할 수 있어야 한다고 판단했다. 그리고 이를 간편하게 수행할 수 있는 방법이 필요했다.
+
+| 고민해결
+
+스프링 배치에는 `JobExecutionListener` 를 통해서 `Job` 의 시작과 종료 시점에 콜백을 등록할 수 있다. 이를 활용하면 배치 잡이 끝난 시점에 슬랙으로 알림을 발송할 수 있게 된다. 구현코드와 구조는 다음과 같다.
+
+```java
+@Slf4j
+@Component
+public class JobAlarmExecutionListener implements
+    JobExecutionListener {
+
+    @Value("${notification.slack.webhook.url}")
+    private String slackWebhookUrl;
+
+    @Override
+    public void afterJob(final JobExecution jobExecution) {
+        final Long jobId = jobExecution.getJobId();
+        final Duration timeDiff = calculateJobExecutionTime(jobExecution);
+        final String jobName = jobExecution.getJobInstance().getJobName();
+        final String alarmTitle = AlarmTemplate.generateTitle(jobName);
+        final String alarmContent = AlarmTemplate.generateContent(jobId,
+            timeDiff);
+
+        if (jobExecution.getStatus() == BatchStatus.FAILED) {
+            SlackNotificationUtil.sendMessage(
+                slackWebhookUrl,
+                "[실패] " + alarmTitle,
+                AlarmTemplate.generateTitle(jobName) + " 잡이 실패했습니다",
+                alarmContent,
+                NotificationType.FAIL
+            );
+        } else {
+            SlackNotificationUtil.sendMessage(
+                slackWebhookUrl,
+                "[완료] " + alarmTitle,
+                AlarmTemplate.generateTitle(jobName) + " 잡이 완료되었습니다",
+                alarmContent,
+                NotificationType.SUCCESS
+            );
+        }
+    }
+
+    private static Duration calculateJobExecutionTime(
+        final JobExecution jobExecution
+    ) {
+        final LocalDateTime startTime = jobExecution.getStartTime();
+        final LocalDateTime endTime = jobExecution.getEndTime();
+
+        assert startTime != null;
+        assert endTime != null;
+        return Duration.between(startTime, endTime);
+    }
+}
+```
+<div align="center">
+<img width="671" alt="Screenshot 2024-06-04 at 12 38 54 PM" src="https://github.com/Dittttto/Select-Seat-Project/assets/82052272/6fb79d8b-5734-4b3e-b846-ce0c46caa7e8">
+</div>
+</details>
+
+<details>
 <summary><h3 style="display: inline-block;"> [Batch] @EnableBatchProcessing 적용시 배치 잡이 동작하지 않는 문제</h3></summary>
 
 | 원인
@@ -216,9 +281,9 @@ return new StepBuilder("step", jobRepository)
 | 1500       | 1m29s433ms     |
 | 2000       | 1m52s78ms      |
 
-![Screenshot 2024-06-04 at 12 19 20 AM](https://github.com/Dittttto/Select-Seat-Project/assets/82052272/c2fcf1ee-982e-462a-af4d-40f78b275968)
-![Screenshot 2024-06-04 at 12 19 32 AM](https://github.com/Dittttto/Select-Seat-Project/assets/82052272/46c94706-069c-4606-913e-a693886e56f7)
-
+<div align="center">
+<img width="625" alt="Screenshot 2024-06-04 at 12 23 19 PM" src="https://github.com/Dittttto/Select-Seat-Project/assets/82052272/403a6149-6ea2-4586-bbac-ad87300a022d">
+</div>
 측정된 결과를 기반으로 `chunk` 사이즈가 500개인 부분부터 임계점에 도달했다고 판단했고, 500개와 1000개 사이인 **750개**의 `chunk` 사이즈로 최종 결정하였다. 하지만 현재의 750개가 언제나 정답일 수는 없다. 변화하는 서버의 스팩과 지속적인 모니터링으로 튜닝을 수행해야한다.
 </details>
 
@@ -279,11 +344,37 @@ public TicketBatchEntity read() throws Exception {
 </details>
 
 <details>
+<summary><h3 style="display: inline-block;"> [Batch] 튜닝을 통한 성능 개선</h3></summary>
+| 고민
+
+스프링 배치에서는 대용량의 데이터를 처리하고, 이러한 처리에 대해서 `Multi-threaded Step`, `Parallel Steps`, `Partitioning`, `Remote Chunking` 의 튜닝 방법을 제공한다. 이선좌의 좌석 생성의 경우, R, S, A 라는 고정된 좌석을 생성하고, 이는 독립된 `step` 으로 실행될 수 있는 특정이 있다. 그렇기 때문에 `single thread`에서 수행하는 것 보다 3개의 워커를 두고 잡을 실행할 수 있다면 리소스 비용을 아낄 수 있다고 판단하였다. 
+
+| 실험
+
+이선좌 프로젝트에서는 병렬 혹은 원격 청킹 방식을 적용할 부분이 없기 때문에 `Multi-threaded step`과 `Parallel steps` 방법을 사용하여 튜닝을 진행하였고, 결과적으로 multithreading은 75%, 파티셔닝은 50% 의 실행시간 단축할 수 있었다.
+<div align="center">
+ <img width="539" alt="Screenshot 2024-06-04 at 12 17 34 PM" src="https://github.com/Dittttto/Select-Seat-Project/assets/82052272/2223bdc5-eac1-482f-8d0a-70eba257f587">
+</div>
+
+| 고민해결
+
+수치적으로 보면 `Multi-threaded step`이 4배 이상의 실행시간의 단축을 확인할 수 있었지만 문제가 있다. 스프링 배치가 제공하는 대부분의 ItemReader는 상태를 유지하므로 스테이트풀하다. 만약, 잡이 비정상적으로 종료된 경우 잡을 다시 시작할 때 `execution`의 상태를 사용함으로써 중단된 위치를 파악 후 재실행할 수 있다. 멀티 스레드 환경에서는 여러 스레드가 동시에 `execution` 의 상태를 변경하게 되어 덮어쓰여지는 문제가 발생할 수 있다. 이러한 이유로 해당 잡을 재시작할 수 없게 된다. 이는 `Multi-threaded step`이 배치의 장애 대응의 재시작 불가 등의 위험을 수반할 수 있다는 방증이 된다. 그렇기 때문에 이선좌 프로젝트에서는 `Partitioning` 방식으로 튜닝을 수행하였다.
+<div align="center">
+<img width="612" alt="Screenshot 2024-06-04 at 12 22 32 PM" src="https://github.com/Dittttto/Select-Seat-Project/assets/82052272/b2d1dd24-4ec8-4237-87b6-8e193f511c89">
+</div>
+
+</details>
+
+
+<details>
 <summary><h3 style="display: inline-block;">[Batch] 독립적인 Step 의 결과를 공유해야 하는 문제</h3></summary>
 
 | 원인
 
 스텝은 잡을 구성하는 독립적인 작업의 단위이다. 여기서 독립적이라는 말은 각 스텝은 의존적일 수 없다는 것이다. 하지만 티켓을 만료하는 잡에서는 만료된 콘서트를 조회하고(조회 스텝), 티켓을 만료하는 스텝에서 조회 스텝의 결과를 참조해야 하는 문제가 발생하였다.
+<div align="center">
+<img width="517" alt="Screenshot 2024-06-04 at 12 07 38 PM" src="https://github.com/Dittttto/Select-Seat-Project/assets/82052272/9f54cf76-f7c5-46fa-8139-3d3ede31f20f">
+</div>
 
 | 문제해결
 
@@ -330,16 +421,40 @@ public ExecutionContextPromotionListener concertDatePromotionListener() {
 
 | 고민
 
-공연에 대한 사전 알림을 발송하기 위해서는 4개 이상의 테이블을 조회해야 하는 경우가 발생했다. 하나의 `Join` 쿼리를 적용할 수 있지만, 적은 양의 데이터라면 성능에 문제가 없지만 대용량의 데이터가 적재된 4개 이상의 테이블에 적용하는 것은 성능 저하의 원인이 된다.
+공연에 대한 사전 알림을 발송하기 위해서는 4개 이상의 테이블을 조회해야 하는 경우가 발생했다. 하나의 `Join` 쿼리를 적용할 수 있지만, 적은 양의 데이터라면 성능에 문제가 없지만 대용량의 데이터가 적재된 4개 이상의 테이블에 적용하는 것은 성능 저하의 원인이 된다. 또한 배치에서 사용한 `JpaPagingItemReader`는 `Chunk` 단위로 `DB`에 커넥션 요청을 수행하기 때문에 `DB I/O`가 증가하는 문제가 발생할 수 있다.
+<div align="center">
+<img width="267" alt="Screenshot 2024-06-04 at 12 11 47 PM" src="https://github.com/Dittttto/Select-Seat-Project/assets/82052272/80a2c894-197f-4ef9-b702-0eda6d570964">
+</div>
 
 | 고민해결
 
 서전 알림에 사용되는 데이터는 90% 이상이 조회성 데이터이다. 또한, 기획에 따라서 필요한 데이터의 형태가 지속적으로 변경될 수 있다고 판단했다. 이를 위해서 대용량의 데이터를 빠르게 조회할 수 있고, 정해진 스키마가 없이 데이터를 적재할 수 있는 `NoSQL` 을 도입하기로 결정하였고, 빠른 조회를 바탕으로 공연 사전 알림 서비스를 구현할 수 있었다.
-
-![Screenshot 2024-06-04 at 12 18 05 AM](https://github.com/Dittttto/Select-Seat-Project/assets/82052272/3d10f4f1-736c-4fd5-a123-064e79b75ae2)
+<div align="center">
+<img width="489" alt="Screenshot 2024-06-04 at 12 09 51 PM" src="https://github.com/Dittttto/Select-Seat-Project/assets/82052272/a2b4e3cc-9598-4c04-933e-5048eb21ad27">
+</div>
 
 </details>
 
+<details>
+<summary><h3>[Batch] 좌석 키 생성과 이선좌 기능</h3></summary>
+
+| 고민
+
+티켓팅은 지속적인 새로고침을 통해서 좌석의 상태를 요청하게 되는데, 좌석에 대한 키를 DB에 생성해두고 조회를 하면 DB I/O가 증가하게 되어 영속성 계층에 부하를 발생시키게 된다. 그리고 좌석의 선점에 대한 정보도 함께 조회되어야 한다.
+
+| 해결 
+
+보다 빠른 좌석의 상태 조회를 위해서 미리 콘서트 좌석에 대한 키를 해시 자료구조에 담어 레디스에 생성해두었다. 키를 생성하는 작업은 스프링 배치 잡으로 구현하였고 콘서트 하루전에 미리 키를 생성하고, 콘서트가 끝나는 시점에 좌석 키를 만료할 수 있도록 구현하였다. 해시 자료구조로 키를 생성했기 때문에 O(1) 의 시간에 조회가 가능하다. 그리고 좌석이 선점되었다면 키에 대한 불린 값을 통해서 이선좌 기능이 동작할 수 있도록 구현하였다.
+
+<div align="center">	
+<img width="613" alt="Screenshot 2024-06-04 at 12 28 04 PM" src="https://github.com/Dittttto/Select-Seat-Project/assets/82052272/a052ef0e-91a3-492e-9bb2-5fdf5b3da88d">
+</div>
+
+<div align="center">	
+<img width="568" alt="Screenshot 2024-06-04 at 12 40 31 PM" src="https://github.com/Dittttto/Select-Seat-Project/assets/82052272/4009cb95-b3bd-4254-a689-e8fa95999b78">
+</div>
+
+</details>
 
 <details>
 <summary><h3 style="display: inline-block;">[Queuing system] 대용량 트래픽을 처리하기 위한 Webflux</h3></summary>
@@ -366,8 +481,10 @@ public ExecutionContextPromotionListener concertDatePromotionListener() {
 | Spring Webflux | 2000000 | 0.0 | 42787/sec |
 
 결과를 통해 Spring Webflux가 Spring Web 대비 `약 3배이상 높은 처리율`을 가진 다는 것을 확인할 수 있었다.
+<div align="center">
+<img width="495" alt="Screenshot 2024-06-04 at 12 24 21 PM" src="https://github.com/Dittttto/Select-Seat-Project/assets/82052272/bd80a293-e3a6-44c1-b1e2-b34e586d7989">
+</div>
 </details>
-
 
 <details>
 <summary><h3 style="display: inline-block;">Gradle Multi-module</h3></summary>
