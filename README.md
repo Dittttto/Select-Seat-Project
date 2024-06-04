@@ -24,7 +24,10 @@
 
 ## Demonstraion
 
-http://selected-seat.shop
+~~[데모사이트](http://selected-seat.shop) (금액 이슈로 서비스를 중단)~~
+
+### 시연영상
+https://github.com/Dittttto/Select-Seat-Project/assets/82052272/48bf6932-a6c1-4682-bbfd-2aa4eb2dbd2f
 
 ## Development
 
@@ -89,6 +92,11 @@ http://selected-seat.shop
 
 - Vegeta
 - Jmeter
+
+## ERD
+
+<img width="707" alt="Screenshot 2024-06-04 at 11 51 15 AM" src="https://github.com/Dittttto/Select-Seat-Project/assets/82052272/31d00073-adc5-4eb6-b73a-f1266a65b0ff">
+
 
 ## Concern and solution process
 
